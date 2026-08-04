@@ -31,18 +31,48 @@
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    transition: background-color 0.15s ease;
+    color: white;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
 }
 
 .igd-media-download-btn:hover {
     background: rgba(0, 0, 0, 0.7);
 }
 
+/* Riding alongside Instagram's own Save icon in its action row, instead of
+   overlaid on the media - see findActionBarInsertionPoint in
+   media-overlay-injector.js. Looks like one of Instagram's own icons: no
+   badge/background, sized and colored (via currentColor) to match. */
+.igd-media-download-btn--inline {
+    position: static;
+    transform: none;
+    margin-left: 16px;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    color: inherit;
+}
+
+.igd-media-download-btn--inline:hover {
+    background: rgba(var(--ig-primary-text, 142 142 142), 0.1);
+}
+
+.igd-media-download-btn--inline-vertical {
+    margin-left: 0;
+    margin-top: 16px;
+}
+
 .igd-media-download-btn > svg {
     width: 16px;
     height: 16px;
-    fill: white;
     display: block;
+}
+
+.igd-media-download-btn--inline > svg {
+    width: 24px;
+    height: 24px;
 }
 
 .igd-media-download-btn.igd-loading > svg {

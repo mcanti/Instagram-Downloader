@@ -8,16 +8,17 @@
 
 /* Media overlay download button (injected on top of Instagram's own media) */
 
-.igd-media-anchor {
-    position: relative !important;
-    z-index: 0;
-    isolation: isolate;
+#igd-overlay-root {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    z-index: 2147483647;
 }
 
 .igd-media-download-btn {
-    position: absolute;
-    bottom: 8px;
-    left: 50%;
+    position: fixed;
     transform: translateX(-50%);
     width: 30px;
     height: 30px;
@@ -29,7 +30,6 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    z-index: 2147483647;
     padding: 0;
     transition: background-color 0.15s ease;
 }

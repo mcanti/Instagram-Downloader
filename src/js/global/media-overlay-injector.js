@@ -66,34 +66,42 @@
     });
 
     /**
-     * Removes any previously-attached anchor/button inside `scopeEl` other
-     * than `keepAnchor`. Needed because the "best" media element can change
-     * across rescans of the same scope (e.g. a story's real video mounts a
-     * moment after its avatar was the only thing rendered yet, or Instagram
-     * swaps the DOM node for a new carousel slide) - without this, the old,
-     * now-wrong anchor would keep its button forever since attaching is
-     * normally a one-time, idempotent operation per container.
+     * Instagram wraps media in several layers of siblings (e.g. its own
+     * permalink-opening <a> overlay) that can sit later in paint order than
+     * whatever ancestor our button lives under - no z-index inside our own
+     * subtree can beat that, since it's a separate stacking branch entirely.
+     * So instead of appending the button inside Instagram's DOM, it's
+     * rendered as a single fixed-position portal appended to <body>,
+     * continuously synced to its anchor's bounding rect - this guarantees it
+     * always paints above everything Instagram renders, and self-heals if
+     * Instagram replaces the underlying DOM out from under it (see
+     * `syncButtonPositions` below).
      */
-    function cleanupStaleAnchors(scopeEl, keepAnchor) {
-        scopeEl.querySelectorAll('.igd-media-anchor').forEach((el) => {
-            if (el === keepAnchor) return;
-            el.classList.remove('igd-media-anchor');
-            const staleBtn = el.querySelector(':scope > .igd-media-download-btn');
-            if (staleBtn) staleBtn.remove();
-        });
-    }
+    const overlayRoot = document.createElement('div');
+    overlayRoot.id = 'igd-overlay-root';
+    document.documentElement.appendChild(overlayRoot);
+
+    /** scopeEl (article/dialog/link/etc) => { anchor, button } */
+    const activeButtons = new Map();
 
     /**
-     * Attaches a download button to `mediaContainer` (the element that gets
-     * position:relative so the button anchors top-left of the media, not the
-     * page) unless one is already attached.
+     * Attaches a download button positioned over `anchor`, keyed by
+     * `scopeEl` (the article/dialog/link/reel container/section that owns
+     * this button - exactly one button per scope). Re-calling with a
+     * different `anchor` for the same `scopeEl` moves the existing button
+     * instead of creating a duplicate - needed because the "best" media
+     * element can change across rescans of the same scope (e.g. a story's
+     * real video mounts a moment after its avatar was the only thing
+     * rendered yet, or Instagram swaps the DOM node for a new carousel
+     * slide).
      *
      * `resolveDetail` is called at click time (not attach time) so it always
      * reflects the currently-visible slide/frame.
      */
-    function attachOverlayButton(mediaContainer, resolveDetail, extraButtonClass) {
-        if (mediaContainer.querySelector(':scope > .igd-media-download-btn')) return;
-        mediaContainer.classList.add('igd-media-anchor');
+    function attachOverlayButton(scopeEl, anchor, resolveDetail, extraButtonClass) {
+        const existing = activeButtons.get(scopeEl);
+        if (existing && existing.anchor === anchor) return;
+        if (existing) existing.button.remove();
         const button = createDownloadButton();
         if (extraButtonClass) button.classList.add(extraButtonClass);
         button.addEventListener('click', (e) => {
@@ -103,8 +111,37 @@
             if (!detail) return;
             requestDownload(button, detail);
         });
-        mediaContainer.appendChild(button);
+        overlayRoot.appendChild(button);
+        activeButtons.set(scopeEl, { anchor, button });
     }
+
+    /**
+     * Keeps every active button's fixed position glued to its anchor's
+     * current bounding rect, every frame. Also doubles as the sole cleanup
+     * mechanism: once an anchor is detached from the document (Instagram
+     * removed/replaced it - e.g. after a click it doesn't handle the way we
+     * expect), its button is dropped here rather than via any explicit
+     * per-context teardown, so a later rescan can attach a fresh one.
+     */
+    function syncButtonPositions() {
+        activeButtons.forEach(({ anchor, button }, scopeEl) => {
+            if (!anchor.isConnected) {
+                button.remove();
+                activeButtons.delete(scopeEl);
+                return;
+            }
+            const rect = anchor.getBoundingClientRect();
+            if (rect.width < 10 || rect.height < 10) {
+                button.style.display = 'none';
+                return;
+            }
+            button.style.display = '';
+            button.style.left = `${rect.left + rect.width / 2}px`;
+            button.style.top = `${rect.bottom - 8 - 15}px`;
+        });
+        requestAnimationFrame(syncButtonPositions);
+    }
+    requestAnimationFrame(syncButtonPositions);
 
     /**
      * Finds the currently-visible media element inside `scopeEl` for a
@@ -224,8 +261,7 @@
         const mediaEl = findActiveSlideMediaElement(scope);
         if (!mediaEl) return;
         const anchor = findSizedAnchor(mediaEl);
-        cleanupStaleAnchors(scope, anchor);
-        attachOverlayButton(anchor, () => {
+        attachOverlayButton(scope, anchor, () => {
             const dotIndex = resolveDotIndex(scope);
             return {
                 kind: 'post',
@@ -251,8 +287,7 @@
         const mediaEl = findActiveSlideMediaElement(article);
         if (!mediaEl) return;
         const anchor = findSizedAnchor(mediaEl);
-        cleanupStaleAnchors(article, anchor);
-        attachOverlayButton(anchor, () => {
+        attachOverlayButton(article, anchor, () => {
             const dotIndex = resolveDotIndex(article);
             return {
                 kind: 'post',
@@ -343,7 +378,7 @@
         const shortcode = extractShortcodeFromHref(link.href);
         if (!shortcode) return;
         if (!link.querySelector('img, video')) return;
-        attachOverlayButton(link, () => ({
+        attachOverlayButton(link, link, () => ({
             kind: 'post',
             shortcode,
             mediaId: null,
@@ -383,7 +418,7 @@
             if (!identifier || !identifier.code) return;
             const video = reelContainer.querySelector('video');
             if (!video) return;
-            attachOverlayButton(video.parentElement, () => ({
+            attachOverlayButton(reelContainer, video.parentElement, () => ({
                 kind: 'post',
                 shortcode: identifier.code,
                 mediaId: null,
@@ -429,11 +464,10 @@
         const mediaEl = findActiveMediaElement(section);
         if (!mediaEl) return;
         const anchor = findSizedAnchor(mediaEl);
-        cleanupStaleAnchors(section, anchor);
         const highlightMatch = window.location.pathname.match(IG_HIGHLIGHT_REGEX_MAIN);
         if (highlightMatch) {
             const highlightId = highlightMatch[3];
-            attachOverlayButton(anchor, () => ({
+            attachOverlayButton(section, anchor, () => ({
                 kind: 'highlight',
                 highlightId,
                 mediaId: null,
@@ -443,7 +477,7 @@
         }
         const username = getValueByKey(section, 'username');
         if (!username) return;
-        attachOverlayButton(anchor, () => {
+        attachOverlayButton(section, anchor, () => {
             const frameMatch = window.location.pathname.match(IG_STORY_REGEX_MAIN);
             return {
                 kind: 'stories',

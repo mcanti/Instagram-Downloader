@@ -30,13 +30,16 @@
     /** containerId => the button element, so results can update it */
     const buttonRegistry = new Map();
 
-    function createDownloadButton() {
+    function createDownloadButton(isMultiple) {
         const button = document.createElement('button');
         button.className = 'igd-media-download-btn';
         button.type = 'button';
-        button.title = 'Download';
-        button.innerHTML =
-            '<svg viewBox="0 0 24 24"><path d="M12 3v10.5m0 0-4-4m4 4 4-4M5 19h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        button.title = isMultiple ? 'Download all' : 'Download';
+        // Multiple: same arrow, but two stacked lines below it instead of one
+        // tray line, to read as "download all" rather than "download".
+        button.innerHTML = isMultiple
+            ? '<svg viewBox="0 0 24 24"><path d="M12 2v8m0 0-3-3m3 3 3-3M5 14h14M5 18h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+            : '<svg viewBox="0 0 24 24"><path d="M12 3v10.5m0 0-4-4m4 4 4-4M5 19h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         return button;
     }
 
@@ -115,8 +118,8 @@
         return el.parentElement ? el : null;
     }
 
-    function makeButton(resolveDetail, extraButtonClass) {
-        const button = createDownloadButton();
+    function makeButton(resolveDetail, extraButtonClass, isMultiple) {
+        const button = createDownloadButton(isMultiple);
         if (extraButtonClass) button.classList.add(extraButtonClass);
         button.addEventListener('click', (e) => {
             e.preventDefault();
@@ -198,6 +201,54 @@
         activeButtons.set(scopeEl, { mode: 'portal', anchor: mediaAnchor, button });
     }
 
+    /** scopeEl => { afterButton, button } - the "download all" button for a carousel, see attachDownloadAllButton */
+    const activeAllButtons = new Map();
+
+    /**
+     * Adds a second "download all" button right after `scopeEl`'s primary
+     * one (see `attachOverlayButton`) - carousel-only, feed-only (see
+     * `getCarouselSlideCount`'s call site in `scanPostArticle`). Piggybacks
+     * entirely on the primary button's own placement (`insertAdjacentElement
+     * ('afterend', ...)` on it directly works whether it ended up inline as
+     * a flex sibling or nested inside the Save wrapper - both are just "the
+     * primary button's current parent") rather than re-deriving an
+     * insertion point, so it only ever shows up somewhere a real button is
+     * already anchored - never against a Save icon found via the reels
+     * viewer's proximity fallback, and never as a fixed-position portal
+     * over the media, both of which only this narrower feed-carousel case
+     * doesn't need to handle.
+     */
+    function attachDownloadAllButton(scopeEl, resolveDetail) {
+        const primary = activeButtons.get(scopeEl);
+        const stale = activeAllButtons.get(scopeEl);
+        if (!primary || primary.mode !== 'actionbar') {
+            if (stale) {
+                stale.button.remove();
+                activeAllButtons.delete(scopeEl);
+            }
+            return;
+        }
+        if (stale && stale.afterButton === primary.button && primary.button.nextElementSibling === stale.button) {
+            return;
+        }
+        if (stale) stale.button.remove();
+        const button = makeButton(resolveDetail, null, true);
+        button.classList.add('igd-media-download-btn--inline');
+        if (getComputedStyle(primary.button.parentElement).flexDirection === 'column') {
+            button.classList.add('igd-media-download-btn--inline-vertical');
+        }
+        primary.button.insertAdjacentElement('afterend', button);
+        activeAllButtons.set(scopeEl, { afterButton: primary.button, button });
+    }
+
+    function detachDownloadAllButton(scopeEl) {
+        const stale = activeAllButtons.get(scopeEl);
+        if (stale) {
+            stale.button.remove();
+            activeAllButtons.delete(scopeEl);
+        }
+    }
+
     /**
      * Keeps every active portal-mode button's fixed position glued to its
      * anchor's current bounding rect, every frame. Also doubles as the sole
@@ -228,6 +279,9 @@
             button.style.display = '';
             button.style.left = `${rect.left + rect.width / 2}px`;
             button.style.top = `${rect.bottom - 8 - 15}px`;
+        });
+        activeAllButtons.forEach(({ button }, scopeEl) => {
+            if (!button.isConnected) activeAllButtons.delete(scopeEl);
         });
         requestAnimationFrame(syncButtonPositions);
     }
@@ -318,6 +372,20 @@
     }
 
     /**
+     * How many slides a post's carousel has - 1 for a plain single-media
+     * post. Prefers the dot indicators (same reliability reasoning as
+     * `resolveDotIndex`); falls back to counting `<li>` slides directly for
+     * contexts that don't render dots.
+     */
+    function getCarouselSlideCount(scopeEl) {
+        const dots = scopeEl.querySelectorAll('button[aria-label^="Go to slide"]');
+        if (dots.length) return dots.length;
+        const ul = scopeEl.querySelector('ul');
+        if (!ul) return 1;
+        return Array.from(ul.querySelectorAll('li')).filter((li) => li.querySelector('img, video')).length || 1;
+    }
+
+    /**
      * Instagram wraps media in several layers of zero/near-zero-width
      * carousel-transform divs. Walk up from `startEl`'s parent until finding
      * an ancestor that's both sized like the visible media AND not the
@@ -392,6 +460,14 @@
                 index: dotIndex === null ? 0 : dotIndex,
             };
         });
+        // "Download all" only makes sense for carousels, and only in the
+        // main feed (not the dedicated post page/modal/grid) - see the
+        // conversation with the user this was scoped to.
+        if (getCarouselSlideCount(article) > 1) {
+            attachDownloadAllButton(article, () => ({ kind: 'post-all', shortcode: postInfo.code }));
+        } else {
+            detachDownloadAllButton(article);
+        }
     }
 
     function debounce(fn, delay) {

@@ -8,6 +8,16 @@ window.addEventListener('mediaOverlayDownload', async (e) => {
         );
     }
     try {
+        if (kind === 'post-all') {
+            const data = await fetchPostMediaData(shortcode);
+            if (!data || !data.media.length) return reportResult('error');
+            const date = new Date(data.date * 1000).toISOString().split('T')[0];
+            for (const item of data.media) {
+                const fileName = `${data.user.username}_${item.id}_${date}${item.isVideo ? '.mp4' : '.jpeg'}`;
+                await saveMediaItem(item, fileName);
+            }
+            return reportResult('success');
+        }
         let data = null;
         if (kind === 'post') data = await fetchPostMediaData(shortcode);
         else if (kind === 'stories') data = await fetchStoryMediaData(username);

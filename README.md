@@ -1,88 +1,88 @@
-# Instagram-Downloader
+# Instagram Downloader
 
 ![icon](icons/icon128.png)
 
-## How this work
-
-With regex and some `ReactFiber` magic, I'm able to know which post you wanna download and fetch the api to download the photos for you.
-
-## Browser compatibility
-
-This extension should work fine on the following browsers with `fetch()` API and Chromium base browser, tested Browser:
-
-- Google Chrome
-- MS Edge
-- FireFox
-
-## Download and install
-
-- Download [latest version](https://github.com/HOAIAN2/Instagram-Downloader/releases) and extract to a folder
-
-### Chrome or other Chromium browsers
-
-- Enable Chrome extensions developer mode
-- Drag and drop extracted folder to `chrome://extensions/`
-
-### Firefox (Development)
-
-- Go to Add-ons Manager `about:addons`
-- Click on Setting > Debug Add-ons
-- Click on `Load Temporary Add-on...` and select the `manifest.json` file
-
-## Usage
-
-- Go to any `post`, `reels`, `stories`, etc. Then click `Download` button to fetch data.
-
-- Click on any photos/videos to save.
-
-- Toggle multi select by click on `Photos` and select photos by click on them (or select all by click and hold on `Photos`). Then click on `Download` to save zip file.
-
-- If you scroll on the home page, this app will auto detect the post you wanna download so you don't have to click to comment section to open modal. Thanks to ReactFiber.
+Instagram Downloader is a Manifest V3 browser extension for saving media from Instagram. The project initially started as a fork of an existing Instagram downloader, but it has since been substantially reworked and expanded. The current implementation includes a different download flow, automatic media detection across Instagram's main views, carousel support, and several export formats.
 
 ## Features
 
-- Download posts ✔
-- Download reels ✔
-- Download latest stories ✔
-- Download highlight stories ✔
-- Support high resolution ✔
-- Support download zip file ✔
+- Download photos and videos from posts, including carousel posts.
+- Download the currently visible media directly from an overlay button.
+- Download reels and TV videos.
+- Download the latest stories and highlight stories.
+- Detect media in the home feed, profile grids, Explore, post modals, dedicated post pages, reels, stories, and highlights.
+- Request high-resolution media from Instagram where available.
+- Download all carousel items individually.
+- Download carousel items as a ZIP archive.
+- Download carousel images as a PDF, with one image per page. Video items are skipped in the PDF export.
+- Use a multi-select flow to choose specific media before downloading.
+- Cache media information to reduce repeated requests for the same post.
+- Support keyboard shortcuts for common actions.
 
-## Customize
+## Browser compatibility
 
-You can modify anything you want except some constants start with "IG\_" that definitely gonna break this extension.
+The extension is intended for Chromium-based browsers and Firefox. It has been tested with:
 
-Edit Hide / Show Transition effects
+- Google Chrome
+- Microsoft Edge
+- Firefox
 
-```css
-.display-container.hide {
-    transform-origin: 85% bottom;
-    transform: scale(0);
-    pointer-events: none;
-    opacity: 0.6;
-}
-```
+## Download and install
 
-## Keyboard shortcut
+- Download the [latest release](https://github.com/HOAIAN2/Instagram-Downloader/releases) and extract it to a folder.
 
-Some keyboard shortcuts will not work if you use an external application for typing.
+### Chrome or another Chromium browser
+
+1. Enable Developer mode in the extensions page.
+2. Open `chrome://extensions/` (or the equivalent page in your browser).
+3. Click **Load unpacked** and select the extracted project folder.
+
+### Firefox
+
+1. Open `about:addons`.
+2. Open the extensions menu and choose **Debug Add-ons**.
+3. Click **Load Temporary Add-on...** and select `manifest.json`.
+
+## Usage
+
+Open Instagram and navigate to a post, reel, story, highlight, or carousel. Click the download button shown beside the relevant media or in Instagram's action bar.
+
+For a carousel, use the multi-download button to download all items. A long press on that button opens the format menu with:
+
+- **Download as ZIP** — saves every carousel item as a separate file in an archive.
+- **Download as PDF** — creates a PDF with one page for each image in the carousel.
+
+The extension also detects posts while scrolling the home feed, so opening the comments or post modal is not required. The overlay button downloads the media item that is currently visible.
+
+## Keyboard shortcuts
+
+Shortcuts work when focus is not inside an input, textarea, search field, or another text-entry element.
 
 - Download: `D`
-- Close: `esc` `C` 
-- Select all `S`
-- Keyboard shortcut should work if you don't focus on special HTML Elements like `input` `textarea` or any element with `textbox` role (ex: comment, search, ...)
+- Close: `Esc` or `C`
+- Select all: `S`
 
-## Deprecated features
+## Development
 
-These features was deprecated for some reason.
+Runtime code is in `src/js/`. The extension has no bundler or compilation step.
 
-- V5.1.0
-    - Set fallback download to latest post from some user.
+```bash
+make format
+make format-check
+```
+
+To test locally, load the repository folder as an unpacked extension and manually verify posts, carousels, reels, stories, highlights, overlays, ZIP/PDF exports, keyboard shortcuts, and browser console errors.
+
+The `IG_` constants are compatibility-sensitive and should not be renamed casually.
+
+## Customization
+
+The extension's shared styles are in `src/style/style.css`. You can adjust the interface and transition effects there. Keep changes to `manifest.json`, host permissions, injected scripts, and download handling narrowly scoped because they run on Instagram pages and process user media.
 
 ## Notes
 
-If you save extension on external partition or drive and your Linux Distro doesn't mount automatically, extension will disappear. You have to mount that partition/drive and restart browser.
+If the extension is stored on an external partition or drive, make sure that partition is mounted before starting the browser. Otherwise, the browser may remove the extension from its loaded extensions list.
 
-## Here is Demo
+## Demo
 
 [Demo v5.1.0](https://github.com/HOAIAN2/Instagram-Downloader/assets/98139595/917369c9-cdbb-4315-8e6d-7a1632a8888b)

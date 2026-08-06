@@ -70,6 +70,16 @@
             requestDownload(button, { ...resolveDetail(), kind: 'post-all-zip' });
         });
         menu.appendChild(zipButton);
+        const pdfButton = document.createElement('button');
+        pdfButton.type = 'button';
+        pdfButton.textContent = 'Download as PDF';
+        pdfButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            hideFormatMenu();
+            requestDownload(button, { ...resolveDetail(), kind: 'post-all-pdf' });
+        });
+        menu.appendChild(pdfButton);
         overlayRoot.appendChild(menu);
         const rect = button.getBoundingClientRect();
         menu.style.left = `${Math.max(8, rect.left)}px`;
@@ -78,7 +88,9 @@
         const closeOnOutsidePointer = (e) => {
             if (!menu.contains(e.target) && e.target !== button) hideFormatMenu();
         };
-        setTimeout(() => document.addEventListener('pointerdown', closeOnOutsidePointer, { once: true, capture: true }));
+        setTimeout(() =>
+            document.addEventListener('pointerdown', closeOnOutsidePointer, { once: true, capture: true }),
+        );
     }
 
     function requestDownload(button, detailWithoutId) {
@@ -295,7 +307,12 @@
                 }
                 insertionPoint.insertAdjacentElement('afterend', button);
             }
-            activeButtons.set(scopeEl, { mode: 'actionbar', insertionPoint, button, insideWrapper: insertInsideWrapper });
+            activeButtons.set(scopeEl, {
+                mode: 'actionbar',
+                insertionPoint,
+                button,
+                insideWrapper: insertInsideWrapper,
+            });
             return;
         }
 
@@ -733,12 +750,17 @@
             const rect = scope.getBoundingClientRect();
             const isInView = rect.top < window.innerHeight / 2 && rect.bottom > window.innerHeight / 2;
             const shortcode = isInView && urlCode ? urlCode : identifier.code;
-            attachOverlayButton(scope, video.parentElement, () => ({
-                kind: 'post',
-                shortcode,
-                mediaId: null,
-                index: 0,
-            }), 'igd-media-download-btn--reel-viewer');
+            attachOverlayButton(
+                scope,
+                video.parentElement,
+                () => ({
+                    kind: 'post',
+                    shortcode,
+                    mediaId: null,
+                    index: 0,
+                }),
+                'igd-media-download-btn--reel-viewer',
+            );
         });
     }
 
@@ -782,25 +804,35 @@
         const highlightMatch = window.location.pathname.match(IG_HIGHLIGHT_REGEX_MAIN);
         if (highlightMatch) {
             const highlightId = highlightMatch[3];
-            attachOverlayButton(section, anchor, () => ({
-                kind: 'highlight',
-                highlightId,
-                mediaId: null,
-                index: 0,
-            }), 'igd-media-download-btn--story-viewer');
+            attachOverlayButton(
+                section,
+                anchor,
+                () => ({
+                    kind: 'highlight',
+                    highlightId,
+                    mediaId: null,
+                    index: 0,
+                }),
+                'igd-media-download-btn--story-viewer',
+            );
             return;
         }
         const username = getValueByKey(section, 'username');
         if (!username) return;
-        attachOverlayButton(section, anchor, () => {
-            const frameMatch = window.location.pathname.match(IG_STORY_REGEX_MAIN);
-            return {
-                kind: 'stories',
-                username,
-                mediaId: frameMatch && frameMatch[3] ? frameMatch[3] : null,
-                index: 0,
-            };
-        }, 'igd-media-download-btn--story-viewer');
+        attachOverlayButton(
+            section,
+            anchor,
+            () => {
+                const frameMatch = window.location.pathname.match(IG_STORY_REGEX_MAIN);
+                return {
+                    kind: 'stories',
+                    username,
+                    mediaId: frameMatch && frameMatch[3] ? frameMatch[3] : null,
+                    index: 0,
+                };
+            },
+            'igd-media-download-btn--story-viewer',
+        );
     }
 
     const storiesObserver = new MutationObserver(debounce(scanStoriesViewer, Math.floor(1000 / 60)));

@@ -53,6 +53,10 @@
     height: 24px;
     background: transparent;
     color: inherit;
+    flex: 0 0 24px;
+    align-self: center;
+    line-height: 0;
+    font-size: 0;
 }
 
 .igd-media-download-btn--inline:hover {
@@ -62,6 +66,30 @@
 .igd-media-download-btn--inline-vertical {
     margin-left: 0;
     margin-top: 16px;
+}
+
+.igd-download-format-menu {
+    position: fixed;
+    z-index: 1;
+    padding: 4px;
+    border-radius: 8px;
+    background: rgb(var(--ig-primary-background, 255 255 255));
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+}
+
+.igd-download-format-menu button {
+    border: 0;
+    border-radius: 5px;
+    padding: 8px 12px;
+    background: transparent;
+    color: rgb(var(--ig-primary-text, 0 0 0));
+    cursor: pointer;
+    font: inherit;
+    white-space: nowrap;
+}
+
+.igd-download-format-menu button:hover {
+    background: rgba(var(--ig-primary-text, 0 0 0), 0.1);
 }
 
 .igd-media-download-btn > svg {

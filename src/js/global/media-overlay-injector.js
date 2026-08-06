@@ -26,9 +26,11 @@
         reelsObserver.disconnect();
         storiesObserver.disconnect();
         window.removeEventListener('scroll', debouncedFeedScan);
+        if (isProfilePage(new URL(e.destination.url).pathname)) removeGridOverlayButtons();
     });
     /** containerId => the button element, so results can update it */
     const buttonRegistry = new Map();
+    let activeFormatMenu = null;
 
     function createDownloadButton(isMultiple) {
         const button = document.createElement('button');
@@ -46,6 +48,37 @@
     function setButtonState(button, state) {
         button.classList.remove('igd-loading', 'igd-success', 'igd-error');
         if (state !== 'idle') button.classList.add(`igd-${state}`);
+    }
+
+    function hideFormatMenu() {
+        if (!activeFormatMenu) return;
+        activeFormatMenu.remove();
+        activeFormatMenu = null;
+    }
+
+    function showFormatMenu(button, resolveDetail) {
+        hideFormatMenu();
+        const menu = document.createElement('div');
+        menu.className = 'igd-download-format-menu';
+        const zipButton = document.createElement('button');
+        zipButton.type = 'button';
+        zipButton.textContent = 'Download as ZIP';
+        zipButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            hideFormatMenu();
+            requestDownload(button, { ...resolveDetail(), kind: 'post-all-zip' });
+        });
+        menu.appendChild(zipButton);
+        overlayRoot.appendChild(menu);
+        const rect = button.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, rect.left)}px`;
+        menu.style.top = `${rect.bottom + 8}px`;
+        activeFormatMenu = menu;
+        const closeOnOutsidePointer = (e) => {
+            if (!menu.contains(e.target) && e.target !== button) hideFormatMenu();
+        };
+        setTimeout(() => document.addEventListener('pointerdown', closeOnOutsidePointer, { once: true, capture: true }));
     }
 
     function requestDownload(button, detailWithoutId) {
@@ -74,6 +107,33 @@
 
     /** scopeEl (article/dialog/link/etc) => { mode: 'actionbar'|'portal', anchor/insertionPoint, button } */
     const activeButtons = new Map();
+
+    function isProfilePage(pathname) {
+        const segments = pathname.split('/').filter(Boolean);
+        if (segments.length !== 1) return false;
+        return !new Set([
+            'about',
+            'accounts',
+            'direct',
+            'directory',
+            'emails',
+            'explore',
+            'p',
+            'reel',
+            'reels',
+            'stories',
+            'tv',
+            'web',
+        ]).has(segments[0].toLowerCase());
+    }
+
+    function removeGridOverlayButtons() {
+        activeButtons.forEach((entry, scopeEl) => {
+            if (scopeEl.tagName !== 'A' || entry.mode !== 'portal') return;
+            entry.button.remove();
+            activeButtons.delete(scopeEl);
+        });
+    }
 
     /**
      * Instagram's own action row (like/comment/share/save/...) already has a
@@ -112,6 +172,21 @@
                 });
             }
         }
+        if (!saveSvg) {
+            // Story/reel viewers do not expose a Save action, but their Like
+            // and Share controls still live in a normal flex action row. Use
+            // the rightmost action icon as the insertion point so the
+            // download button becomes a real sibling of Instagram's controls
+            // instead of falling back to a manually-positioned portal.
+            const actionSvgs = ['Share', 'Send', 'Like', 'Comment']
+                .map((label) => scopeEl.querySelector(`svg[aria-label="${label}"]`))
+                .filter((svg) => {
+                    if (!svg) return false;
+                    const rect = svg.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                });
+            saveSvg = actionSvgs[0] || null;
+        }
         if (!saveSvg) return null;
         let el = saveSvg;
         while (el.parentElement && el.parentElement.children.length <= 1) el = el.parentElement;
@@ -121,9 +196,28 @@
     function makeButton(resolveDetail, extraButtonClass, isMultiple) {
         const button = createDownloadButton(isMultiple);
         if (extraButtonClass) button.classList.add(extraButtonClass);
+        let longPressTimer = null;
+        let longPressTriggered = false;
+        if (isMultiple) {
+            button.addEventListener('pointerdown', () => {
+                longPressTriggered = false;
+                longPressTimer = setTimeout(() => {
+                    longPressTriggered = true;
+                    showFormatMenu(button, resolveDetail);
+                }, 650);
+            });
+            const cancelLongPress = () => clearTimeout(longPressTimer);
+            button.addEventListener('pointerup', cancelLongPress);
+            button.addEventListener('pointercancel', cancelLongPress);
+            button.addEventListener('pointerleave', cancelLongPress);
+        }
         button.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (longPressTriggered) {
+                longPressTriggered = false;
+                return;
+            }
             const detail = resolveDetail();
             if (!detail) return;
             requestDownload(button, detail);
@@ -137,8 +231,8 @@
      * scope), preferring to place it next to Instagram's own Save icon
      * (see `findActionBarInsertionPoint`); falls back to a fixed-position
      * overlay glued to `mediaAnchor` (synced continuously in
-     * `syncButtonPositions`) for contexts with no Save icon at all - grid/
-     * explore thumbnails and the Stories/Highlights viewer.
+     * `syncButtonPositions`) for grid/explore thumbnails. Story/reel viewers
+     * wait for their Like/Share action row instead of using that fallback.
      *
      * Re-calling for the same `scopeEl` moves the existing button instead of
      * creating a duplicate whenever the insertion point/anchor changed -
@@ -154,6 +248,17 @@
     function attachOverlayButton(scopeEl, mediaAnchor, resolveDetail, extraButtonClass) {
         const existing = activeButtons.get(scopeEl);
         const insertionPoint = findActionBarInsertionPoint(scopeEl);
+        const actionBarOnly =
+            extraButtonClass === 'igd-media-download-btn--story-viewer' ||
+            extraButtonClass === 'igd-media-download-btn--reel-viewer';
+
+        if (!insertionPoint && actionBarOnly) {
+            if (existing) {
+                existing.button.remove();
+                activeButtons.delete(scopeEl);
+            }
+            return;
+        }
 
         if (insertionPoint) {
             // Instagram's action row (like/comment/share/save/...) is laid
@@ -201,13 +306,12 @@
         activeButtons.set(scopeEl, { mode: 'portal', anchor: mediaAnchor, button });
     }
 
-    /** scopeEl => { afterButton, button } - the "download all" button for a carousel, see attachDownloadAllButton */
+    /** scopeEl => { afterButton, button } - the "download all" button for a carousel */
     const activeAllButtons = new Map();
 
     /**
      * Adds a second "download all" button right after `scopeEl`'s primary
-     * one (see `attachOverlayButton`) - carousel-only, feed-only (see
-     * `getCarouselSlideCount`'s call site in `scanPostArticle`). Piggybacks
+     * one (see `attachOverlayButton`) for any carousel context. Piggybacks
      * entirely on the primary button's own placement (`insertAdjacentElement
      * ('afterend', ...)` on it directly works whether it ended up inline as
      * a flex sibling or nested inside the Save wrapper - both are just "the
@@ -215,8 +319,8 @@
      * insertion point, so it only ever shows up somewhere a real button is
      * already anchored - never against a Save icon found via the reels
      * viewer's proximity fallback, and never as a fixed-position portal
-     * over the media, both of which only this narrower feed-carousel case
-     * doesn't need to handle.
+     * over the media, both of which do not provide a useful place for a
+     * second action button.
      */
     function attachDownloadAllButton(scopeEl, resolveDetail) {
         const primary = activeButtons.get(scopeEl);
@@ -434,6 +538,11 @@
                 index: dotIndex === null ? 0 : dotIndex,
             };
         });
+        if (getCarouselSlideCount(scope) > 1) {
+            attachDownloadAllButton(scope, () => ({ kind: 'post-all', shortcode }));
+        } else {
+            detachDownloadAllButton(scope);
+        }
     }
 
     const postPageObserver = new MutationObserver(scanPostPageOrModal);
@@ -460,9 +569,7 @@
                 index: dotIndex === null ? 0 : dotIndex,
             };
         });
-        // "Download all" only makes sense for carousels, and only in the
-        // main feed (not the dedicated post page/modal/grid) - see the
-        // conversation with the user this was scoped to.
+        // "Download all" only makes sense for carousels in the main feed.
         if (getCarouselSlideCount(article) > 1) {
             attachDownloadAllButton(article, () => ({ kind: 'post-all', shortcode: postInfo.code }));
         } else {
@@ -547,6 +654,7 @@
     }
 
     function attachGridLink(link) {
+        if (isProfilePage(window.location.pathname)) return;
         const shortcode = extractShortcodeFromHref(link.href);
         if (!shortcode) return;
         if (!link.querySelector('img, video')) return;
@@ -630,7 +738,7 @@
                 shortcode,
                 mediaId: null,
                 index: 0,
-            }));
+            }), 'igd-media-download-btn--reel-viewer');
         });
     }
 
@@ -679,7 +787,7 @@
                 highlightId,
                 mediaId: null,
                 index: 0,
-            }));
+            }), 'igd-media-download-btn--story-viewer');
             return;
         }
         const username = getValueByKey(section, 'username');
@@ -692,7 +800,7 @@
                 mediaId: frameMatch && frameMatch[3] ? frameMatch[3] : null,
                 index: 0,
             };
-        });
+        }, 'igd-media-download-btn--story-viewer');
     }
 
     const storiesObserver = new MutationObserver(debounce(scanStoriesViewer, Math.floor(1000 / 60)));
